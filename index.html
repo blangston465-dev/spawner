@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Life Spawn: Visual Survival Simulator</title>
+  <title>Grow.io: Survival Growth Game</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -76,10 +76,10 @@
 
     <div id="ui">
       <div class="start-screen" id="startScreen">
-        <h1 class="game-title">LIFE SPAWN</h1>
-        <p style="color:#aaa; font-size:18px; margin-bottom:10px;">Random Birth Survival Simulator</p>
-        <p style="color:#888; font-size:14px;">You'll be randomly born somewhere on Earth</p>
-        <p style="color:#888; font-size:14px;">Survive as long as you can!</p>
+        <h1 class="game-title">GROW.IO</h1>
+        <p style="color:#aaa; font-size:18px; margin-bottom:10px;">Survival Growth Game</p>
+        <p style="color:#888; font-size:14px;">Use WASD to move and collect resources to survive and grow!</p>
+        <p style="color:#888; font-size:14px;">The bigger you get, the better you survive!</p>
         <button class="spawn-btn" id="spawnBtn">SPAWN INTO WORLD</button>
       </div>
 
@@ -106,14 +106,14 @@
           </div>
         </div>
         <div class="stat-row">
-          <span class="stat-icon">💰</span>
+          <span class="stat-icon">⭐</span>
           <div class="stat-bar-container">
-            <div class="stat-bar money-bar" id="moneyBar"></div>
-            <div class="stat-text" id="moneyText">$0</div>
+            <div class="stat-bar money-bar" id="scoreBar"></div>
+            <div class="stat-text" id="scoreText">0 pts</div>
           </div>
         </div>
         <div style="margin-top:10px; color:#aaa; font-size:12px;">
-          Age: <span id="ageDisplay">0</span> years
+          Size: <span id="sizeDisplay">1.0</span>x
         </div>
       </div>
 
@@ -187,7 +187,7 @@
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('statsPanel').style.display = 'block';
         document.getElementById('locationPanel').style.display = 'block';
-        document.getElementById('actionButtons').style.display = 'flex';
+        // Removed action buttons - snake.io style gameplay
 
         this.setupControls();
         this.gameLoop();
@@ -210,8 +210,10 @@
         this.player = {
           x: canvas.width/2, y: canvas.height/2, vx:0, vy:0,
           health: clamp(baseHealth, 1, 100), maxHealth:100,
-          hunger: 60 + Math.random()*40,
-          thirst: 60 + Math.random()*40,
+          hunger: 90 + Math.random()*10,
+          thirst: 90 + Math.random()*10,
+          size: 1,
+          score: 0,
           money: baseMoney,
           age: 0,
           location,
@@ -251,11 +253,11 @@
           });
         }
 
-        const resourceCount = location.resources * 3;
+        const resourceCount = location.resources * 8 + 15; // Much more resources
         for (let i=0;i<resourceCount;i++) {
           this.items.push({
-            x: Math.random()*canvas.width*2 - canvas.width,
-            y: Math.random()*canvas.height*2 - canvas.height,
+            x: Math.random()*canvas.width*4 - canvas.width*2,
+            y: Math.random()*canvas.height*4 - canvas.height*2,
             type: Math.random() > 0.5 ? 'food' : 'water',
             value: 10 + Math.random()*20
           });
@@ -325,9 +327,9 @@
         this.camera.x = this.player.x - canvas.width/2;
         this.camera.y = this.player.y - canvas.height/2;
 
-        // Metabolism
-        this.player.hunger = clamp(this.player.hunger - 0.02, 0, 100);
-        this.player.thirst = clamp(this.player.thirst - 0.03, 0, 100);
+        // Metabolism - slower for better gameplay balance
+        this.player.hunger = clamp(this.player.hunger - 0.015, 0, 100);
+        this.player.thirst = clamp(this.player.thirst - 0.025, 0, 100);
         if (this.player.hunger <= 0 || this.player.thirst <= 0) {
           this.player.health = clamp(this.player.health - 0.1, 0, 100);
         }
@@ -350,20 +352,35 @@
         // Collect items
         this.items = this.items.filter(item => {
           const dist = Math.hypot(item.x - this.player.x, item.y - this.player.y);
-          if (dist < 30) {
+          const playerRadius = 15 + this.player.size * 3;
+          if (dist < playerRadius) {
             if (item.type === 'food') {
-              const amt = 10 + Math.random()*20;
+              const amt = 15 + Math.random()*25;
               this.player.hunger = clamp(this.player.hunger + amt, 0, 100);
-              this.addMessage('Found food!', 'success');
+              this.player.size += 0.1;
+              this.player.score += 10;
+              this.addMessage('+10 points!', 'success');
             } else {
-              const amt = 10 + Math.random()*20;
+              const amt = 20 + Math.random()*30;
               this.player.thirst = clamp(this.player.thirst + amt, 0, 100);
-              this.addMessage('Found water!', 'success');
+              this.player.size += 0.05;
+              this.player.score += 5;
+              this.addMessage('+5 points!', 'success');
             }
             return false;
           }
           return true;
         });
+
+        // Continuously spawn new resources
+        if (Math.random() < 0.1 && this.items.length < 50) {
+          this.items.push({
+            x: this.player.x + (Math.random() - 0.5) * canvas.width * 2,
+            y: this.player.y + (Math.random() - 0.5) * canvas.height * 2,
+            type: Math.random() > 0.5 ? 'food' : 'water',
+            value: 10 + Math.random()*20
+          });
+        }
 
         this.dayNight += 0.001;
         this.updateUI();
@@ -413,12 +430,18 @@
         if (this.player) {
           ctx.save();
           ctx.translate(this.player.x, this.player.y);
+          const playerSize = 15 + this.player.size * 3;
+          
           ctx.fillStyle = this.player.sprite.shirtColor;
-          ctx.fillRect(-10, 0, 20, 20); // body
+          ctx.fillRect(-playerSize*0.6, 0, playerSize*1.2, playerSize*1.3); // body
           ctx.fillStyle = this.player.sprite.skinColor;
-          ctx.beginPath(); ctx.arc(0, -5, 12, 0, Math.PI*2); ctx.fill(); // head
+          ctx.beginPath(); 
+          ctx.arc(0, -playerSize*0.3, playerSize*0.8, 0, Math.PI*2); 
+          ctx.fill(); // head
           ctx.fillStyle = this.player.sprite.hairColor;
-          ctx.beginPath(); ctx.arc(0, -8, 10, Math.PI, 0); ctx.fill(); // hair
+          ctx.beginPath(); 
+          ctx.arc(0, -playerSize*0.5, playerSize*0.6, Math.PI, 0); 
+          ctx.fill(); // hair
           ctx.restore();
         }
 
@@ -436,10 +459,10 @@
         setBar('hungerBar', this.player.hunger, 'hungerText', `${Math.floor(this.player.hunger)}/100`);
         setBar('thirstBar', this.player.thirst, 'thirstText', `${Math.floor(this.player.thirst)}/100`);
 
-        const moneyPct = clamp(this.player.money / 10, 0, 100);
-        setBar('moneyBar', moneyPct, 'moneyText', `$${this.player.money}`);
+        const scorePct = clamp(this.player.score / 100, 0, 100);
+        setBar('scoreBar', scorePct, 'scoreText', `${this.player.score} pts`);
 
-        document.getElementById('ageDisplay').textContent = Math.floor(this.player.age);
+        document.getElementById('sizeDisplay').textContent = this.player.size.toFixed(1);
       }
 
       addMessage(text, type='info') {
@@ -452,50 +475,15 @@
         setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 4000);
       }
 
-      findFood() {
-        if (Math.random() > 0.3) {
-          const amount = 10 + Math.random()*20;
-          this.player.hunger = clamp(this.player.hunger + amount, 0, 100);
-          this.addMessage(`Found food! +${Math.floor(amount)} hunger`, 'success');
-        } else this.addMessage('No food found', 'warning');
-      }
-
-      findWater() {
-        if (Math.random() > 0.3) {
-          const amount = 15 + Math.random()*25;
-          this.player.thirst = clamp(this.player.thirst + amount, 0, 100);
-          this.addMessage(`Found water! +${Math.floor(amount)} thirst`, 'success');
-        } else this.addMessage('No water found', 'warning');
-      }
-
-      work() {
-        const earned = Math.floor(this.player.location.wealth * (2 + Math.random()*3));
-        this.player.money += earned;
-        this.player.hunger = clamp(this.player.hunger - 5, 0, 100);
-        this.player.thirst = clamp(this.player.thirst - 5, 0, 100);
-        this.addMessage(`Earned $${earned}`, 'success');
-      }
-
-      rest() {
-        this.player.health = clamp(this.player.health + 10, 0, 100);
-        this.addMessage('Rested +10 health', 'success');
-      }
-
-      explore() {
-        this.player.vx = (Math.random()-0.5) * 10;
-        this.player.vy = (Math.random()-0.5) * 10;
-        this.addMessage('Exploring...', 'info');
-      }
-
       gameOver() {
         this.gameRunning = false;
         const div = document.createElement('div');
         div.className = 'game-over';
         div.innerHTML = `
           <h2>GAME OVER</h2>
-          <p>Survived: ${Math.floor(this.player.age)} years</p>
+          <p>Final Score: ${this.player.score} points</p>
+          <p>Final Size: ${this.player.size.toFixed(1)}x</p>
           <p>Location: ${this.player.location.name}</p>
-          <p>Wealth: $${this.player.money}</p>
           <button class="spawn-btn" onclick="location.reload()">Play Again</button>
         `;
         document.getElementById('ui').appendChild(div);
@@ -531,13 +519,6 @@
 
       // Start
       document.getElementById('spawnBtn').onclick = () => game.init();
-
-      // Actions
-      document.getElementById('findFoodBtn').onclick  = () => { if (game.player?.alive) game.findFood(); };
-      document.getElementById('findWaterBtn').onclick = () => { if (game.player?.alive) game.findWater(); };
-      document.getElementById('workBtn').onclick      = () => { if (game.player?.alive) game.work(); };
-      document.getElementById('restBtn').onclick      = () => { if (game.player?.alive) game.rest(); };
-      document.getElementById('exploreBtn').onclick   = () => { if (game.player?.alive) game.explore(); };
     };
   </script>
 </body>
