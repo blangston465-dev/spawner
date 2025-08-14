@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Life Spawn: Visual Survival Simulator</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:#000; overflow:hidden; display:flex; justify-content:center; align-items:center; min-height:100vh;
+    }
+    #gameContainer { position:relative; width:100vw; height:100vh; background:linear-gradient(to bottom,#87CEEB 0%,#98D8E8 50%,#87CEEB 100%); }
+    #gameCanvas { position:absolute; top:0; left:0; image-rendering:pixelated; }
+    /* Allow clicks in UI (removed pointer-events:none on the whole UI) */
+    #ui { position:absolute; inset:0; z-index:10; }
+    .stats-panel {
+      position:absolute; top:20px; left:20px; background:rgba(0,0,0,.8); padding:15px; border-radius:10px; border:2px solid #00ffcc; min-width:250px;
+    }
+    .stat-row { display:flex; align-items:center; margin-bottom:10px; color:#fff; }
+    .stat-icon { width:20px; height:20px; margin-right:10px; display:inline-block; }
+    .stat-bar-container { flex:1; height:20px; background:rgba(255,255,255,.1); border-radius:10px; overflow:hidden; position:relative; }
+    .stat-bar { height:100%; transition:width .2s linear; border-radius:10px; }
+    .stat-text { position:absolute; width:100%; text-align:center; line-height:20px; font-size:12px; font-weight:700; color:#fff; text-shadow:1px 1px 2px rgba(0,0,0,.8); }
+    .health-bar{ background:linear-gradient(90deg,#ff3366,#ff6b6b);}
+    .hunger-bar{ background:linear-gradient(90deg,#ffa500,#ffcc00);}
+    .thirst-bar{ background:linear-gradient(90deg,#00bfff,#00ffff);}
+    .money-bar{ background:linear-gradient(90deg,#00ff00,#32cd32);}
+    .location-panel {
+      position:absolute; top:20px; right:20px; background:rgba(0,0,0,.8); padding:15px; border-radius:10px; border:2px solid #ffa500; color:#fff; max-width:300px;
+    }
+    .location-title { color:#ffa500; font-size:18px; margin-bottom:10px; text-align:center; }
+    .start-screen {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,.9);
+      padding:40px; border-radius:20px; border:3px solid #00ffcc; text-align:center; z-index:100;
+    }
+    .game-title {
+      color:#00ffcc; font-size:48px; margin-bottom:20px; text-shadow:0 0 20px rgba(0,255,204,.5); animation:glow 2s ease-in-out infinite alternate;
+    }
+    @keyframes glow { from{ text-shadow:0 0 20px rgba(0,255,204,.5);} to{ text-shadow:0 0 30px rgba(0,255,204,.8);} }
+    .spawn-btn {
+      background:linear-gradient(135deg,#00ff88,#00bfff); color:#000; border:none; padding:15px 40px; font-size:24px; font-weight:700; border-radius:10px; cursor:pointer; transition:.2s; margin-top:20px;
+    }
+    .spawn-btn:hover{ transform:scale(1.06); box-shadow:0 10px 30px rgba(0,255,136,.35);}
+    .action-buttons {
+      position:absolute; bottom:30px; left:50%; transform:translateX(-50%); display:flex; gap:10px;
+    }
+    .action-btn {
+      background:rgba(0,0,0,.8); color:#00ffcc; border:2px solid #00ffcc; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:14px; transition:.15s;
+    }
+    .action-btn:hover:not(:disabled){ background:rgba(0,255,204,.2); transform:translateY(-2px); }
+    .action-btn:disabled{ opacity:.3; cursor:not-allowed; }
+    .message-log {
+      position:absolute; bottom:120px; left:50%; transform:translateX(-50%); width:500px; max-height:150px; overflow:auto;
+      pointer-events:none; /* log should not block clicks */
+    }
+    .message {
+      background:rgba(0,0,0,.8); color:#fff; padding:8px 15px; margin-bottom:5px; border-radius:5px; animation:slideUp .3s ease; border-left:3px solid #00ffcc;
+    }
+    @keyframes slideUp { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+    .message.danger{ border-left-color:#ff3366;}
+    .message.success{ border-left-color:#00ff88;}
+    .message.warning{ border-left-color:#ffa500;}
+    .game-over {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,.95); padding:40px; border-radius:20px; border:3px solid #ff3366; text-align:center; z-index:100;
+    }
+    .game-over h2 { color:#ff3366; font-size:36px; margin-bottom:20px; }
+    .game-over p { color:#fff; font-size:18px; margin-bottom:10px; }
+    /* Hidden-by-default sections */
+    #statsPanel, #locationPanel, #actionButtons { display:none; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" tabindex="0" aria-label="Game canvas"></canvas>
+
+    <div id="ui">
+      <div class="start-screen" id="startScreen">
+        <h1 class="game-title">LIFE SPAWN</h1>
+        <p style="color:#aaa; font-size:18px; margin-bottom:10px;">Random Birth Survival Simulator</p>
+        <p style="color:#888; font-size:14px;">You'll be randomly born somewhere on Earth</p>
+        <p style="color:#888; font-size:14px;">Survive as long as you can!</p>
+        <button class="spawn-btn" id="spawnBtn">SPAWN INTO WORLD</button>
+      </div>
+
+      <div class="stats-panel" id="statsPanel">
+        <div class="stat-row">
+          <span class="stat-icon">❤️</span>
+          <div class="stat-bar-container">
+            <div class="stat-bar health-bar" id="healthBar"></div>
+            <div class="stat-text" id="healthText">100/100</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🍖</span>
+          <div class="stat-bar-container">
+            <div class="stat-bar hunger-bar" id="hungerBar"></div>
+            <div class="stat-text" id="hungerText">100/100</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💧</span>
+          <div class="stat-bar-container">
+            <div class="stat-bar thirst-bar" id="thirstBar"></div>
+            <div class="stat-text" id="thirstText">100/100</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💰</span>
+          <div class="stat-bar-container">
+            <div class="stat-bar money-bar" id="moneyBar"></div>
+            <div class="stat-text" id="moneyText">$0</div>
+          </div>
+        </div>
+        <div style="margin-top:10px; color:#aaa; font-size:12px;">
+          Age: <span id="ageDisplay">0</span> years
+        </div>
+      </div>
+
+      <div class="location-panel" id="locationPanel">
+        <div class="location-title" id="locationName">Loading...</div>
+        <div id="locationDetails" style="color:#ccc; font-size:14px;"></div>
+      </div>
+
+      <div class="message-log" id="messageLog"></div>
+
+      <div class="action-buttons" id="actionButtons">
+        <button class="action-btn" id="findFoodBtn">Find Food</button>
+        <button class="action-btn" id="findWaterBtn">Find Water</button>
+        <button class="action-btn" id="workBtn">Work/Beg</button>
+        <button class="action-btn" id="restBtn">Rest</button>
+        <button class="action-btn" id="exploreBtn">Explore</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Globals
+    let canvas, ctx, game;
+
+    // --- Utils
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    // --- Data
+    const worldLocations = [
+      // Wealthy
+      { name:"Tokyo, Japan", wealth:9, safety:9, resources:9, climate:"temperate", population:"dense" },
+      { name:"New York, USA", wealth:9, safety:7, resources:9, climate:"temperate", population:"dense" },
+      { name:"London, UK", wealth:9, safety:8, resources:9, climate:"temperate", population:"dense" },
+      { name:"Singapore", wealth:10, safety:10, resources:8, climate:"tropical", population:"dense" },
+      { name:"Zurich, Switzerland", wealth:10, safety:10, resources:9, climate:"temperate", population:"moderate" },
+      // Middle
+      { name:"São Paulo, Brazil", wealth:5, safety:4, resources:6, climate:"tropical", population:"dense" },
+      { name:"Mumbai, India", wealth:4, safety:5, resources:5, climate:"tropical", population:"dense" },
+      { name:"Cairo, Egypt", wealth:3, safety:5, resources:4, climate:"arid", population:"dense" },
+      { name:"Mexico City, Mexico", wealth:5, safety:4, resources:6, climate:"temperate", population:"dense" },
+      { name:"Bangkok, Thailand", wealth:5, safety:6, resources:7, climate:"tropical", population:"dense" },
+      { name:"Istanbul, Turkey", wealth:5, safety:5, resources:6, climate:"temperate", population:"dense" },
+      // Poor
+      { name:"Lagos, Nigeria", wealth:2, safety:3, resources:3, climate:"tropical", population:"dense" },
+      { name:"Dhaka, Bangladesh", wealth:1, safety:4, resources:2, climate:"tropical", population:"dense" },
+      { name:"Kinshasa, DRC", wealth:1, safety:2, resources:2, climate:"tropical", population:"dense" },
+      { name:"Rural Ethiopia", wealth:1, safety:3, resources:1, climate:"arid", population:"sparse" },
+      { name:"Rural Afghanistan", wealth:1, safety:1, resources:1, climate:"arid", population:"sparse" },
+      { name:"Port-au-Prince, Haiti", wealth:1, safety:2, resources:2, climate:"tropical", population:"moderate" },
+      { name:"Rural Chad", wealth:1, safety:2, resources:1, climate:"arid", population:"sparse" },
+      { name:"Mogadishu, Somalia", wealth:1, safety:1, resources:1, climate:"arid", population:"moderate" }
+    ];
+
+    // --- Game
+    class Game {
+      constructor() {
+        this.player = null;
+        this.items = [];
+        this.npcs = [];
+        this.buildings = [];
+        this.camera = { x:0, y:0 };
+        this.gameRunning = false;
+        this.dayNight = 0;
+      }
+
+      init() {
+        this.gameRunning = true;
+        this.spawnPlayer();
+
+        // Show UI
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('statsPanel').style.display = 'block';
+        document.getElementById('locationPanel').style.display = 'block';
+        document.getElementById('actionButtons').style.display = 'flex';
+
+        this.setupControls();
+        this.gameLoop();
+      }
+
+      spawnPlayer() {
+        // Weighted roll
+        const roll = Math.random();
+        let location;
+        if (roll < 0.15) location = worldLocations[Math.floor(Math.random()*5)];
+        else if (roll < 0.50) location = worldLocations.slice(5,11)[Math.floor(Math.random()*6)];
+        else location = worldLocations.slice(11)[Math.floor(Math.random()*8)];
+
+        const baseHealth = 50 + (location.wealth * 5) + Math.random() * 20; // can exceed 100
+        const baseMoney =
+          location.wealth > 7 ? Math.floor(Math.random()*1000) :
+          location.wealth > 4 ? Math.floor(Math.random()*100) :
+          Math.floor(Math.random()*10);
+
+        this.player = {
+          x: canvas.width/2, y: canvas.height/2, vx:0, vy:0,
+          health: clamp(baseHealth, 1, 100), maxHealth:100,
+          hunger: 60 + Math.random()*40,
+          thirst: 60 + Math.random()*40,
+          money: baseMoney,
+          age: 0,
+          location,
+          alive: true,
+          sprite: {
+            skinColor: ['#FFE0B2','#F5DEB3','#D2691E','#8B4513'][Math.floor(Math.random()*4)],
+            hairColor: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'),
+            shirtColor: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0')
+          }
+        };
+
+        this.generateWorld(location);
+
+        document.getElementById('locationName').textContent = location.name;
+        document.getElementById('locationDetails').innerHTML = `
+          Wealth: ${'⭐'.repeat(location.wealth)}<br>
+          Safety: ${'🛡️'.repeat(location.safety)}<br>
+          Resources: ${'📦'.repeat(location.resources)}<br>
+          Climate: ${location.climate}
+        `;
+        this.addMessage(`Born in ${location.name}! Starting money: $${baseMoney}`, 'info');
+      }
+
+      generateWorld(location) {
+        this.buildings = [];
+        this.items = [];
+        this.npcs = [];
+
+        const buildingCount = 5 + location.wealth * 2;
+        for (let i=0;i<buildingCount;i++) {
+          this.buildings.push({
+            x: Math.random()*canvas.width*2 - canvas.width,
+            y: Math.random()*canvas.height*2 - canvas.height,
+            width: 60 + Math.random()*40,
+            height: 60 + Math.random()*40,
+            color: location.wealth > 5 ? '#4a5568' : '#8b4513'
+          });
+        }
+
+        const resourceCount = location.resources * 3;
+        for (let i=0;i<resourceCount;i++) {
+          this.items.push({
+            x: Math.random()*canvas.width*2 - canvas.width,
+            y: Math.random()*canvas.height*2 - canvas.height,
+            type: Math.random() > 0.5 ? 'food' : 'water',
+            value: 10 + Math.random()*20
+          });
+        }
+
+        const npcCount = location.population === 'dense' ? 10 : 5;
+        for (let i=0;i<npcCount;i++) {
+          this.npcs.push({
+            x: Math.random()*canvas.width*2 - canvas.width,
+            y: Math.random()*canvas.height*2 - canvas.height,
+            vx: (Math.random()-0.5)*2,
+            vy: (Math.random()-0.5)*2,
+            friendly: Math.random() > (1 - location.safety/10)
+          });
+        }
+      }
+
+      setupControls() {
+        const speed = 5;
+
+        // Keyboard
+        const keyState = {};
+        const updateVelocityFromKeys = () => {
+          if (!this.player || !this.player.alive) return;
+          let vx = 0, vy = 0;
+          if (keyState['w'] || keyState['arrowup']) vy -= speed;
+          if (keyState['s'] || keyState['arrowdown']) vy += speed;
+          if (keyState['a'] || keyState['arrowleft']) vx -= speed;
+          if (keyState['d'] || keyState['arrowright']) vx += speed;
+          this.player.vx = vx;
+          this.player.vy = vy;
+        };
+
+        document.addEventListener('keydown', (e) => {
+          keyState[e.key.toLowerCase()] = true;
+          updateVelocityFromKeys();
+        });
+        document.addEventListener('keyup', (e) => {
+          keyState[e.key.toLowerCase()] = false;
+          updateVelocityFromKeys();
+        });
+
+        // Mouse click-to-move
+        canvas.addEventListener('click', (e) => {
+          if (!this.player || !this.player.alive) return;
+          const rect = canvas.getBoundingClientRect();
+          const targetX = e.clientX - rect.left;
+          const targetY = e.clientY - rect.top;
+          const dx = targetX - canvas.width/2;
+          const dy = targetY - canvas.height/2;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0) {
+            this.player.vx = (dx/dist) * speed;
+            this.player.vy = (dy/dist) * speed;
+          }
+        });
+      }
+
+      update() {
+        if (!this.player || !this.player.alive) return;
+
+        // Player physics
+        this.player.x += this.player.vx;
+        this.player.y += this.player.vy;
+
+        // Camera follows
+        this.camera.x = this.player.x - canvas.width/2;
+        this.camera.y = this.player.y - canvas.height/2;
+
+        // Metabolism
+        this.player.hunger = clamp(this.player.hunger - 0.02, 0, 100);
+        this.player.thirst = clamp(this.player.thirst - 0.03, 0, 100);
+        if (this.player.hunger <= 0 || this.player.thirst <= 0) {
+          this.player.health = clamp(this.player.health - 0.1, 0, 100);
+        }
+        this.player.age += 0.0001;
+
+        if (this.player.health <= 0) {
+          this.gameOver();
+        }
+
+        // NPC wander
+        this.npcs.forEach(npc => {
+          npc.x += npc.vx;
+          npc.y += npc.vy;
+          if (Math.random() < 0.01) {
+            npc.vx = (Math.random()-0.5)*2;
+            npc.vy = (Math.random()-0.5)*2;
+          }
+        });
+
+        // Collect items
+        this.items = this.items.filter(item => {
+          const dist = Math.hypot(item.x - this.player.x, item.y - this.player.y);
+          if (dist < 30) {
+            if (item.type === 'food') {
+              const amt = 10 + Math.random()*20;
+              this.player.hunger = clamp(this.player.hunger + amt, 0, 100);
+              this.addMessage('Found food!', 'success');
+            } else {
+              const amt = 10 + Math.random()*20;
+              this.player.thirst = clamp(this.player.thirst + amt, 0, 100);
+              this.addMessage('Found water!', 'success');
+            }
+            return false;
+          }
+          return true;
+        });
+
+        this.dayNight += 0.001;
+        this.updateUI();
+      }
+
+      render() {
+        // Day/night background
+        const cycle = Math.sin(this.dayNight) * 0.5 + 0.5;
+        const r = Math.floor(135 + cycle * 120);
+        const g = Math.floor(206 + cycle * 49);
+        const b = Math.floor(235 + cycle * 20);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(-this.camera.x, -this.camera.y);
+
+        // Buildings
+        this.buildings.forEach(b => {
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x, b.y, b.width, b.height);
+        });
+
+        // Items
+        this.items.forEach(item => {
+          ctx.save();
+          ctx.translate(item.x, item.y);
+          ctx.beginPath();
+          if (item.type === 'food') {
+            ctx.fillStyle = '#ff0000'; ctx.arc(0, 0, 10, 0, Math.PI * 2);
+          } else {
+            ctx.fillStyle = '#0099ff'; ctx.arc(0, 0, 8, 0, Math.PI * 2);
+          }
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // NPCs
+        this.npcs.forEach(npc => {
+          ctx.fillStyle = npc.friendly ? '#00ff00' : '#ff0000';
+          ctx.beginPath();
+          ctx.arc(npc.x, npc.y, 15, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Player
+        if (this.player) {
+          ctx.save();
+          ctx.translate(this.player.x, this.player.y);
+          ctx.fillStyle = this.player.sprite.shirtColor;
+          ctx.fillRect(-10, 0, 20, 20); // body
+          ctx.fillStyle = this.player.sprite.skinColor;
+          ctx.beginPath(); ctx.arc(0, -5, 12, 0, Math.PI*2); ctx.fill(); // head
+          ctx.fillStyle = this.player.sprite.hairColor;
+          ctx.beginPath(); ctx.arc(0, -8, 10, Math.PI, 0); ctx.fill(); // hair
+          ctx.restore();
+        }
+
+        ctx.restore();
+      }
+
+      updateUI() {
+        const setBar = (id, value, textId, text) => {
+          const v = clamp(value, 0, 100);
+          document.getElementById(id).style.width = v + '%';
+          if (textId) document.getElementById(textId).textContent = text;
+        };
+
+        setBar('healthBar', this.player.health, 'healthText', `${Math.floor(this.player.health)}/100`);
+        setBar('hungerBar', this.player.hunger, 'hungerText', `${Math.floor(this.player.hunger)}/100`);
+        setBar('thirstBar', this.player.thirst, 'thirstText', `${Math.floor(this.player.thirst)}/100`);
+
+        const moneyPct = clamp(this.player.money / 10, 0, 100);
+        setBar('moneyBar', moneyPct, 'moneyText', `$${this.player.money}`);
+
+        document.getElementById('ageDisplay').textContent = Math.floor(this.player.age);
+      }
+
+      addMessage(text, type='info') {
+        const log = document.getElementById('messageLog');
+        const div = document.createElement('div');
+        div.className = `message ${type}`;
+        div.textContent = text;
+        log.appendChild(div);
+        while (log.children.length > 5) log.removeChild(log.firstChild);
+        setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 4000);
+      }
+
+      findFood() {
+        if (Math.random() > 0.3) {
+          const amount = 10 + Math.random()*20;
+          this.player.hunger = clamp(this.player.hunger + amount, 0, 100);
+          this.addMessage(`Found food! +${Math.floor(amount)} hunger`, 'success');
+        } else this.addMessage('No food found', 'warning');
+      }
+
+      findWater() {
+        if (Math.random() > 0.3) {
+          const amount = 15 + Math.random()*25;
+          this.player.thirst = clamp(this.player.thirst + amount, 0, 100);
+          this.addMessage(`Found water! +${Math.floor(amount)} thirst`, 'success');
+        } else this.addMessage('No water found', 'warning');
+      }
+
+      work() {
+        const earned = Math.floor(this.player.location.wealth * (2 + Math.random()*3));
+        this.player.money += earned;
+        this.player.hunger = clamp(this.player.hunger - 5, 0, 100);
+        this.player.thirst = clamp(this.player.thirst - 5, 0, 100);
+        this.addMessage(`Earned $${earned}`, 'success');
+      }
+
+      rest() {
+        this.player.health = clamp(this.player.health + 10, 0, 100);
+        this.addMessage('Rested +10 health', 'success');
+      }
+
+      explore() {
+        this.player.vx = (Math.random()-0.5) * 10;
+        this.player.vy = (Math.random()-0.5) * 10;
+        this.addMessage('Exploring...', 'info');
+      }
+
+      gameOver() {
+        this.gameRunning = false;
+        const div = document.createElement('div');
+        div.className = 'game-over';
+        div.innerHTML = `
+          <h2>GAME OVER</h2>
+          <p>Survived: ${Math.floor(this.player.age)} years</p>
+          <p>Location: ${this.player.location.name}</p>
+          <p>Wealth: $${this.player.money}</p>
+          <button class="spawn-btn" onclick="location.reload()">Play Again</button>
+        `;
+        document.getElementById('ui').appendChild(div);
+      }
+
+      gameLoop() {
+        if (!this.gameRunning) return;
+        this.update();
+        this.render();
+        requestAnimationFrame(() => this.gameLoop());
+      }
+    }
+
+    // --- Boot
+    function resizeCanvasHiDPI() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const { innerWidth:w, innerHeight:h } = window;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale drawing ops
+    }
+
+    window.onload = () => {
+      canvas = document.getElementById('gameCanvas');
+      ctx = canvas.getContext('2d');
+
+      resizeCanvasHiDPI();
+      window.addEventListener('resize', resizeCanvasHiDPI);
+
+      game = new Game();
+
+      // Start
+      document.getElementById('spawnBtn').onclick = () => game.init();
+
+      // Actions
+      document.getElementById('findFoodBtn').onclick  = () => { if (game.player?.alive) game.findFood(); };
+      document.getElementById('findWaterBtn').onclick = () => { if (game.player?.alive) game.findWater(); };
+      document.getElementById('workBtn').onclick      = () => { if (game.player?.alive) game.work(); };
+      document.getElementById('restBtn').onclick      = () => { if (game.player?.alive) game.rest(); };
+      document.getElementById('exploreBtn').onclick   = () => { if (game.player?.alive) game.explore(); };
+    };
+  </script>
+</body>
+</html>
