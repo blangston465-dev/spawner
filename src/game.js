@@ -21,6 +21,7 @@
   const healthFillEl = document.getElementById('health-fill');
   const healthTextEl = document.getElementById('health-text');
   const currentLocationEl = document.getElementById('current-location');
+  const survivalOddsEl = document.getElementById('survival-odds');
 
   // Utility helpers
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -129,6 +130,7 @@
       name: 'Peaceful Meadow',
       color: '#7fb069',
       healthRate: 0.5, // Health gained per second
+      maxHealth: 150, // Higher max health in safe areas
       description: 'A safe, green meadow with healing herbs',
       spawnChance: 0.3
     },
@@ -136,6 +138,7 @@
       name: 'Dense Forest',
       color: '#2d5016',
       healthRate: 0, // Neutral
+      maxHealth: 100, // Standard max health
       description: 'A thick forest with moderate danger',
       spawnChance: 0.25
     },
@@ -143,6 +146,7 @@
       name: 'Rocky Desert',
       color: '#d4a574',
       healthRate: -2, // Health lost per second
+      maxHealth: 80, // Reduced max health in harsh areas
       description: 'A harsh desert that drains your energy',
       spawnChance: 0.2
     },
@@ -150,6 +154,7 @@
       name: 'Frozen Tundra',
       color: '#a8dadc',
       healthRate: -3, // Health lost per second
+      maxHealth: 70, // Further reduced in very harsh areas
       description: 'A freezing wasteland',
       spawnChance: 0.15
     },
@@ -157,6 +162,7 @@
       name: 'Toxic Swamp',
       color: '#606c38',
       healthRate: -5, // Health lost per second
+      maxHealth: 60, // Lowest max health in most dangerous area
       description: 'A dangerous swamp filled with poison',
       spawnChance: 0.1
     }
@@ -183,6 +189,23 @@
       }
     }
     return BIOMES[0]; // Fallback to first biome
+  }
+
+  function calculateSurvivalOdds(biome) {
+    // Base survival calculation based on health rate
+    if (biome.healthRate > 0) {
+      // Healing biomes have very high survival odds
+      return 95;
+    } else if (biome.healthRate === 0) {
+      // Neutral biomes have good survival odds
+      return 75;
+    } else {
+      // Harmful biomes: worse survival odds based on how negative the health rate is
+      // healthRate of -2 = 60%, -3 = 45%, -5 = 25%
+      const baseOdds = 85;
+      const penalty = Math.abs(biome.healthRate) * 10;
+      return Math.max(15, baseOdds - penalty);
+    }
   }
 
   function updateHealthSystem(dt) {
@@ -222,6 +245,20 @@
   function setCurrentBiome(biome) {
     currentBiome = biome;
     currentLocationEl.textContent = biome.name;
+    
+    // Update max health based on biome
+    const oldMaxHealth = health.max;
+    health.max = biome.maxHealth;
+    
+    // Adjust current health proportionally if max health changed
+    if (oldMaxHealth !== health.max) {
+      const healthRatio = health.current / oldMaxHealth;
+      health.current = Math.min(health.max, healthRatio * health.max);
+    }
+    
+    // Calculate and display survival odds
+    const survivalOdds = calculateSurvivalOdds(biome);
+    survivalOddsEl.textContent = `${survivalOdds}%`;
     
     // Change background to reflect biome
     document.body.style.background = `radial-gradient(1200px 800px at 70% 10%, ${biome.color}33 0%, #0f1221 60%, #0b0e1a 100%)`;
@@ -685,7 +722,7 @@
     const spawnBiome = chooseRandomBiome();
     setCurrentBiome(spawnBiome);
     
-    // Reset health
+    // Reset health to biome's max health
     health.current = health.max;
     updateHealthSystem(0);
     
