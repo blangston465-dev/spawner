@@ -22,6 +22,8 @@
   const healthTextEl = document.getElementById('health-text');
   const currentLocationEl = document.getElementById('current-location');
   const locationDescriptionEl = document.getElementById('location-description');
+  const musicToggleEl = document.getElementById('music-toggle');
+  const musicVolumeEl = document.getElementById('music-volume');
 
   // Utility helpers
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -31,6 +33,397 @@
     return dx * dx + dy * dy;
   };
   const length = (x, y) => Math.hypot(x, y);
+
+  // Music Manager for biome-based ambient soundscapes
+  class MusicManager {
+    constructor() {
+      this.audioContext = null;
+      this.masterGain = null;
+      this.currentScene = null;
+      this.enabled = true;
+      this.volume = 0.5;
+      this.scheduledSounds = [];
+    }
+
+    async resume() {
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.masterGain = this.audioContext.createGain();
+        this.masterGain.connect(this.audioContext.destination);
+        this.masterGain.gain.value = this.enabled ? this.volume * 0.3 : 0; // Keep overall volume modest
+      }
+      
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+    }
+
+    setEnabled(enabled) {
+      this.enabled = enabled;
+      if (this.masterGain) {
+        this.masterGain.gain.value = enabled ? this.volume * 0.3 : 0;
+      }
+    }
+
+    setVolume(volume) {
+      this.volume = volume;
+      if (this.masterGain && this.enabled) {
+        this.masterGain.gain.value = volume * 0.3;
+      }
+    }
+
+    setBiome(biome) {
+      this.stopCurrentScene();
+      if (!this.audioContext || !this.enabled) return;
+
+      const biomeKey = biome.name.split(',')[0].toLowerCase(); // e.g., "canterbury"
+      
+      switch (biomeKey) {
+        case 'canterbury':
+          this.startCanterburyScene();
+          break;
+        case 'manaus':
+          this.startManausScene();
+          break;
+        case 'phoenix':
+          this.startPhoenixScene();
+          break;
+        case 'yakutsk':
+          this.startYakutskScene();
+          break;
+        case 'lagos':
+          this.startLagosScene();
+          break;
+      }
+    }
+
+    stopCurrentScene() {
+      // Clear any scheduled sounds
+      this.scheduledSounds.forEach(id => clearInterval(id));
+      this.scheduledSounds = [];
+      
+      // Stop current scene (oscillators will be garbage collected)
+      this.currentScene = null;
+    }
+
+    // Canterbury: calm major chord pad + gentle sine arpeggio
+    startCanterburyScene() {
+      if (!this.audioContext) return;
+      
+      const now = this.audioContext.currentTime;
+      
+      // Major chord pad (C-E-G)
+      const createPadOsc = (freq) => {
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+        
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        filter.type = 'lowpass';
+        filter.frequency.value = 800;
+        gain.gain.value = 0.15;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        
+        osc.start(now);
+        return { osc, gain, filter };
+      };
+
+      // Pad oscillators
+      createPadOsc(130.81); // C3
+      createPadOsc(164.81); // E3
+      createPadOsc(196.00); // G3
+
+      // Gentle arpeggio
+      const arpeggioFreqs = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+      let arpeggioIndex = 0;
+      
+      const playArpeggioNote = () => {
+        if (!this.audioContext) return;
+        
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const now = this.audioContext.currentTime;
+        
+        osc.type = 'sine';
+        osc.frequency.value = arpeggioFreqs[arpeggioIndex];
+        gain.gain.value = 0;
+        
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        
+        // Envelope: fade in and out
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.08, now + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+        
+        osc.start(now);
+        osc.stop(now + 1.5);
+        
+        arpeggioIndex = (arpeggioIndex + 1) % arpeggioFreqs.length;
+      };
+
+      // Play arpeggio notes every 2-3 seconds
+      playArpeggioNote();
+      const arpeggioInterval = setInterval(() => {
+        playArpeggioNote();
+      }, randRange(2000, 3500));
+      
+      this.scheduledSounds.push(arpeggioInterval);
+    }
+
+    // Manaus: soft marimba-like plucks with light noise "rain" shimmer
+    startManausScene() {
+      if (!this.audioContext) return;
+
+      // Rain shimmer (filtered noise)
+      const noise = this.audioContext.createBufferSource();
+      const noiseBuffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 2, this.audioContext.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < output.length; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+
+      const noiseFilter = this.audioContext.createBiquadFilter();
+      const noiseGain = this.audioContext.createGain();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 8000;
+      noiseFilter.Q.value = 0.5;
+      noiseGain.gain.value = 0.03;
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(this.masterGain);
+      noise.start();
+
+      // Marimba-like plucks
+      const pentatonicFreqs = [220, 247.5, 275, 330, 370]; // A pentatonic
+      
+      const playMarimbaNote = () => {
+        if (!this.audioContext) return;
+        
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+        const now = this.audioContext.currentTime;
+        
+        osc.type = 'sine';
+        osc.frequency.value = pentatonicFreqs[Math.floor(Math.random() * pentatonicFreqs.length)];
+        filter.type = 'lowpass';
+        filter.frequency.value = 1200;
+        gain.gain.value = 0;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        
+        // Sharp attack, quick decay like marimba
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        
+        osc.start(now);
+        osc.stop(now + 0.8);
+      };
+
+      // Random marimba plucks
+      const marimbaInterval = setInterval(() => {
+        playMarimbaNote();
+      }, randRange(3000, 6000));
+      
+      this.scheduledSounds.push(marimbaInterval);
+    }
+
+    // Phoenix: sparse minor pentatonic with warm low-pass pad
+    startPhoenixScene() {
+      if (!this.audioContext) return;
+
+      const now = this.audioContext.currentTime;
+      
+      // Warm pad
+      const padOsc = this.audioContext.createOscillator();
+      const padGain = this.audioContext.createGain();
+      const padFilter = this.audioContext.createBiquadFilter();
+      
+      padOsc.type = 'sawtooth';
+      padOsc.frequency.value = 110; // A2
+      padFilter.type = 'lowpass';
+      padFilter.frequency.value = 300;
+      padGain.gain.value = 0.08;
+      
+      padOsc.connect(padFilter);
+      padFilter.connect(padGain);
+      padGain.connect(this.masterGain);
+      padOsc.start(now);
+
+      // Minor pentatonic sparse notes
+      const minorPentatonic = [220, 261.63, 293.66, 369.99, 415.30]; // A minor pentatonic
+      
+      const playDesertNote = () => {
+        if (!this.audioContext) return;
+        
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+        const now = this.audioContext.currentTime;
+        
+        osc.type = 'triangle';
+        osc.frequency.value = minorPentatonic[Math.floor(Math.random() * minorPentatonic.length)];
+        filter.type = 'lowpass';
+        filter.frequency.value = 600;
+        gain.gain.value = 0;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        
+        // Slow fade in and out
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.06, now + 0.5);
+        gain.gain.linearRampToValueAtTime(0.001, now + 3);
+        
+        osc.start(now);
+        osc.stop(now + 3);
+      };
+
+      // Very sparse desert notes
+      const desertInterval = setInterval(() => {
+        playDesertNote();
+      }, randRange(5000, 10000));
+      
+      this.scheduledSounds.push(desertInterval);
+    }
+
+    // Yakutsk: cold glassy bell tones with high-pass filtered noise wind
+    startYakutskScene() {
+      if (!this.audioContext) return;
+
+      // Wind noise
+      const noise = this.audioContext.createBufferSource();
+      const noiseBuffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 2, this.audioContext.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < output.length; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+
+      const windFilter = this.audioContext.createBiquadFilter();
+      const windGain = this.audioContext.createGain();
+      windFilter.type = 'highpass';
+      windFilter.frequency.value = 2000;
+      windGain.gain.value = 0.04;
+
+      noise.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.connect(this.masterGain);
+      noise.start();
+
+      // Cold bell tones
+      const bellFreqs = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      
+      const playBellTone = () => {
+        if (!this.audioContext) return;
+        
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+        const now = this.audioContext.currentTime;
+        
+        osc.type = 'sine';
+        osc.frequency.value = bellFreqs[Math.floor(Math.random() * bellFreqs.length)];
+        filter.type = 'highpass';
+        filter.frequency.value = 400;
+        gain.gain.value = 0;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        
+        // Bell-like envelope
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.1, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+        
+        osc.start(now);
+        osc.stop(now + 2.5);
+      };
+
+      // Sparse cold bells
+      const bellInterval = setInterval(() => {
+        playBellTone();
+      }, randRange(4000, 8000));
+      
+      this.scheduledSounds.push(bellInterval);
+    }
+
+    // Lagos: subtle percussive pulse with warm mid pad
+    startLagosScene() {
+      if (!this.audioContext) return;
+
+      const now = this.audioContext.currentTime;
+      
+      // Warm environmental hum
+      const humOsc = this.audioContext.createOscillator();
+      const humGain = this.audioContext.createGain();
+      const humFilter = this.audioContext.createBiquadFilter();
+      
+      humOsc.type = 'triangle';
+      humOsc.frequency.value = 155.56; // E♭3
+      humFilter.type = 'bandpass';
+      humFilter.frequency.value = 400;
+      humFilter.Q.value = 2;
+      humGain.gain.value = 0.06;
+      
+      humOsc.connect(humFilter);
+      humFilter.connect(humGain);
+      humGain.connect(this.masterGain);
+      humOsc.start(now);
+
+      // Subtle pulse
+      const playPulse = () => {
+        if (!this.audioContext) return;
+        
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+        const now = this.audioContext.currentTime;
+        
+        osc.type = 'triangle';
+        osc.frequency.value = 65.41; // C2
+        filter.type = 'lowpass';
+        filter.frequency.value = 200;
+        gain.gain.value = 0;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        
+        // Quick pulse
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        
+        osc.start(now);
+        osc.stop(now + 0.3);
+      };
+
+      // Regular but subtle pulse
+      const pulseInterval = setInterval(() => {
+        playPulse();
+      }, randRange(2500, 4000));
+      
+      this.scheduledSounds.push(pulseInterval);
+    }
+  }
+
+  // Create music manager instance
+  const music = new MusicManager();
 
   // Character generation system
   const CHARACTER_TRAITS = {
@@ -227,6 +620,9 @@
     
     // Change background to reflect biome
     document.body.style.background = `radial-gradient(1200px 800px at 70% 10%, ${biome.color}33 0%, #0f1221 60%, #0b0e1a 100%)`;
+    
+    // Start biome-specific music
+    music.setBiome(biome);
   }
 
   // World bounds
@@ -683,6 +1079,9 @@
     // Generate character
     player.character = generateRandomCharacter();
     
+    // Resume audio context (user gesture for autoplay policy)
+    music.resume();
+    
     // Choose spawn biome
     const spawnBiome = chooseRandomBiome();
     setCurrentBiome(spawnBiome);
@@ -770,6 +1169,19 @@
     displayCharacterStats(previewCharacter);
     
     startBtnEl.addEventListener('click', startGame);
+    
+    // Music controls
+    musicToggleEl.addEventListener('click', () => {
+      music.enabled = !music.enabled;
+      music.setEnabled(music.enabled);
+      musicToggleEl.textContent = `Music: ${music.enabled ? 'On' : 'Off'}`;
+      musicToggleEl.setAttribute('aria-pressed', music.enabled.toString());
+    });
+    
+    musicVolumeEl.addEventListener('input', (e) => {
+      const volume = parseInt(e.target.value) / 100;
+      music.setVolume(volume);
+    });
   }
 
   // Initialize the game
