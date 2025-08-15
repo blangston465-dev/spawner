@@ -243,3 +243,16 @@ ul.compact li { margin: 4px 0; }
 .location-info span:first-child {
   color: var(--text);
 }
+
+.survival-info {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.survival-info span:first-child {
+  color: var(--text);
+}
+
+.survival-info span:last-child {
+  font-weight: 600;
+}
