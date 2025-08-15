@@ -21,6 +21,7 @@
   const healthFillEl = document.getElementById('health-fill');
   const healthTextEl = document.getElementById('health-text');
   const currentLocationEl = document.getElementById('current-location');
+  const locationDescriptionEl = document.getElementById('location-description');
 
   // Utility helpers
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -123,41 +124,41 @@
     `;
   }
 
-  // Biome/Location system
+  // Biome/Location system - Real cities with matching environments
   const BIOMES = [
     {
-      name: 'Peaceful Meadow',
+      name: 'Canterbury, New Zealand',
       color: '#7fb069',
       healthRate: 0.5, // Health gained per second
-      description: 'A safe, green meadow with healing herbs',
+      description: 'Rolling green countryside with clean air and abundant farmland - a peaceful haven for recovery',
       spawnChance: 0.3
     },
     {
-      name: 'Dense Forest',
+      name: 'Manaus, Brazil',
       color: '#2d5016',
       healthRate: 0, // Neutral
-      description: 'A thick forest with moderate danger',
+      description: 'Dense Amazon rainforest with dangerous wildlife, extreme humidity, and navigation challenges',
       spawnChance: 0.25
     },
     {
-      name: 'Rocky Desert',
+      name: 'Phoenix, Arizona',
       color: '#d4a574',
       healthRate: -2, // Health lost per second
-      description: 'A harsh desert that drains your energy',
+      description: 'Scorching desert heat with water scarcity, deadly temperatures, and sandstorms',
       spawnChance: 0.2
     },
     {
-      name: 'Frozen Tundra',
+      name: 'Yakutsk, Russia',
       color: '#a8dadc',
       healthRate: -3, // Health lost per second
-      description: 'A freezing wasteland',
+      description: 'World\'s coldest city with temperatures below -60°F, frostbite danger, and frozen infrastructure',
       spawnChance: 0.15
     },
     {
-      name: 'Toxic Swamp',
+      name: 'Lagos, Nigeria',
       color: '#606c38',
       healthRate: -5, // Health lost per second
-      description: 'A dangerous swamp filled with poison',
+      description: 'Coastal megacity with severe pollution, flooding, disease outbreaks, and contaminated water',
       spawnChance: 0.1
     }
   ];
@@ -222,6 +223,7 @@
   function setCurrentBiome(biome) {
     currentBiome = biome;
     currentLocationEl.textContent = biome.name;
+    locationDescriptionEl.textContent = biome.description;
     
     // Change background to reflect biome
     document.body.style.background = `radial-gradient(1200px 800px at 70% 10%, ${biome.color}33 0%, #0f1221 60%, #0b0e1a 100%)`;
