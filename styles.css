@@ -243,3 +243,11 @@ ul.compact li { margin: 4px 0; }
 .location-info span:first-child {
   color: var(--text);
 }
+
+.location-desc {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 4px;
+  line-height: 1.3;
+}
