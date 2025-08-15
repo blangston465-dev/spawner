@@ -18,6 +18,9 @@
   const startScreenEl = document.getElementById('start-screen');
   const startBtnEl = document.getElementById('start-btn');
   const characterStatsEl = document.getElementById('character-stats');
+  const healthFillEl = document.getElementById('health-fill');
+  const healthTextEl = document.getElementById('health-text');
+  const currentLocationEl = document.getElementById('current-location');
 
   // Utility helpers
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -118,6 +121,110 @@
         <span>${character.intelligence}</span>
       </div>
     `;
+  }
+
+  // Biome/Location system
+  const BIOMES = [
+    {
+      name: 'Peaceful Meadow',
+      color: '#7fb069',
+      healthRate: 0.5, // Health gained per second
+      description: 'A safe, green meadow with healing herbs',
+      spawnChance: 0.3
+    },
+    {
+      name: 'Dense Forest',
+      color: '#2d5016',
+      healthRate: 0, // Neutral
+      description: 'A thick forest with moderate danger',
+      spawnChance: 0.25
+    },
+    {
+      name: 'Rocky Desert',
+      color: '#d4a574',
+      healthRate: -2, // Health lost per second
+      description: 'A harsh desert that drains your energy',
+      spawnChance: 0.2
+    },
+    {
+      name: 'Frozen Tundra',
+      color: '#a8dadc',
+      healthRate: -3, // Health lost per second
+      description: 'A freezing wasteland',
+      spawnChance: 0.15
+    },
+    {
+      name: 'Toxic Swamp',
+      color: '#606c38',
+      healthRate: -5, // Health lost per second
+      description: 'A dangerous swamp filled with poison',
+      spawnChance: 0.1
+    }
+  ];
+
+  // Health system
+  const health = {
+    current: 100,
+    max: 100,
+    lastUpdate: 0
+  };
+
+  // Current biome
+  let currentBiome = null;
+
+  function chooseRandomBiome() {
+    let totalChance = BIOMES.reduce((sum, biome) => sum + biome.spawnChance, 0);
+    let random = Math.random() * totalChance;
+    
+    for (const biome of BIOMES) {
+      random -= biome.spawnChance;
+      if (random <= 0) {
+        return biome;
+      }
+    }
+    return BIOMES[0]; // Fallback to first biome
+  }
+
+  function updateHealthSystem(dt) {
+    if (!currentBiome) return;
+    
+    const now = performance.now();
+    health.lastUpdate = now;
+    
+    // Apply health rate from current biome
+    health.current += currentBiome.healthRate * dt;
+    health.current = Math.max(0, Math.min(health.max, health.current));
+    
+    // Update UI
+    const healthPercent = (health.current / health.max) * 100;
+    healthFillEl.style.width = `${healthPercent}%`;
+    healthTextEl.textContent = Math.round(health.current);
+    
+    // Game over check
+    if (health.current <= 0) {
+      gameOver();
+    }
+  }
+
+  function gameOver() {
+    gameRunning = false;
+    alert(`Game Over! You survived in the ${currentBiome.name}.\nFinal Health: 0\nItems Collected: Food ${INVENTORY.food}, Water ${INVENTORY.water}, Wood ${INVENTORY.wood}`);
+    
+    // Reset and show start screen
+    health.current = health.max;
+    INVENTORY.food = 0;
+    INVENTORY.water = 0;
+    INVENTORY.wood = 0;
+    updateInventoryUI();
+    startScreenEl.classList.remove('hidden');
+  }
+
+  function setCurrentBiome(biome) {
+    currentBiome = biome;
+    currentLocationEl.textContent = biome.name;
+    
+    // Change background to reflect biome
+    document.body.style.background = `radial-gradient(1200px 800px at 70% 10%, ${biome.color}33 0%, #0f1221 60%, #0b0e1a 100%)`;
   }
 
   // World bounds
@@ -357,6 +464,17 @@
         INVENTORY[it.type] = (INVENTORY[it.type] || 0) + 1;
         updateInventoryUI();
         burst(it.x, it.y, it.color);
+        
+        // Health benefits from items
+        if (it.type === 'food') {
+          health.current = Math.min(health.max, health.current + 15);
+        } else if (it.type === 'water') {
+          health.current = Math.min(health.max, health.current + 10);
+        } else if (it.type === 'wood') {
+          health.current = Math.min(health.max, health.current + 5);
+        }
+        updateHealthSystem(0);
+        
         items.splice(i, 1);
       }
     }
@@ -563,12 +681,26 @@
     // Generate character
     player.character = generateRandomCharacter();
     
+    // Choose spawn biome
+    const spawnBiome = chooseRandomBiome();
+    setCurrentBiome(spawnBiome);
+    
+    // Reset health
+    health.current = health.max;
+    updateHealthSystem(0);
+    
     // Reset player position
     player.x = world.w() * 0.5;
     player.y = world.h() * 0.5;
     player.velX = 0;
     player.velY = 0;
     player.target = null;
+    
+    // Reset inventory
+    INVENTORY.food = 0;
+    INVENTORY.water = 0;
+    INVENTORY.wood = 0;
+    updateInventoryUI();
     
     // Hide start screen
     startScreenEl.classList.add('hidden');
@@ -609,6 +741,7 @@
     updatePlayer(dt);
     tryCollect();
     updateParticles(dt);
+    updateHealthSystem(dt);
 
     // Draw
     ctx.clearRect(0, 0, canvas.width, canvas.height);

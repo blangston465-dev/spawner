@@ -191,3 +191,55 @@ ul.compact li { margin: 4px 0; }
 .character-stat-name {
   color: var(--text);
 }
+
+/* Status panel styles */
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.health-bar {
+  flex: 1;
+  height: 20px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  min-width: 120px;
+}
+
+.health-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e74c3c 0%, #f39c12 50%, #27ae60 100%);
+  border-radius: 10px;
+  transition: width 0.3s ease;
+  width: 100%;
+}
+
+.health-bar span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+
+.location-info {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.location-info span:first-child {
+  color: var(--text);
+}
