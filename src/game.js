@@ -172,6 +172,139 @@
   // Current biome
   let currentBiome = null;
 
+  // Environmental hazards system
+  const hazards = []; // {x, y, type, radius, damage, active, timer, maxTimer}
+  let hazardSpawnTimer = 0;
+  const HAZARD_SPAWN_INTERVAL = 3000; // ms
+
+  const HAZARD_TYPES = [
+    {
+      type: 'poison_cloud',
+      emoji: '☁️',
+      color: '#9B59B6',
+      radius: 25,
+      damage: 15,
+      duration: 4000,
+      warningTime: 1000,
+      spawnRate: 0.6
+    },
+    {
+      type: 'fire_pit',
+      emoji: '🔥',
+      color: '#E74C3C',
+      radius: 20,
+      damage: 25,
+      duration: 6000,
+      warningTime: 1500,
+      spawnRate: 0.4
+    }
+  ];
+
+  function spawnHazard() {
+    if (hazards.length >= 6) return; // Limit hazards
+    
+    const hazardType = HAZARD_TYPES[Math.floor(Math.random() * HAZARD_TYPES.length)];
+    let tries = 0;
+    
+    while (tries++ < 20) {
+      const x = randRange(world.padding + hazardType.radius, world.w() - world.padding - hazardType.radius);
+      const y = randRange(world.padding + hazardType.radius, world.h() - world.padding - hazardType.radius);
+      
+      // Don't spawn too close to player
+      const distToPlayer = Math.hypot(x - player.x, y - player.y);
+      if (distToPlayer > hazardType.radius + player.r + 50) {
+        hazards.push({
+          x, y,
+          type: hazardType.type,
+          emoji: hazardType.emoji,
+          color: hazardType.color,
+          radius: hazardType.radius,
+          damage: hazardType.damage,
+          active: false,
+          timer: 0,
+          maxTimer: hazardType.duration,
+          warningTime: hazardType.warningTime
+        });
+        break;
+      }
+    }
+  }
+
+  function updateHazards(dt) {
+    hazardSpawnTimer += dt * 1000;
+    if (hazardSpawnTimer >= HAZARD_SPAWN_INTERVAL && gameRunning) {
+      hazardSpawnTimer = 0;
+      spawnHazard();
+    }
+    
+    for (let i = hazards.length - 1; i >= 0; i--) {
+      const hazard = hazards[i];
+      hazard.timer += dt * 1000;
+      
+      // Activate after warning time
+      if (!hazard.active && hazard.timer >= hazard.warningTime) {
+        hazard.active = true;
+      }
+      
+      // Check collision with player if active
+      if (hazard.active) {
+        const dist = Math.hypot(player.x - hazard.x, player.y - hazard.y);
+        if (dist <= hazard.radius + player.r) {
+          // Player hit by hazard
+          health.current = Math.max(0, health.current - hazard.damage);
+          updateHealthSystem(0);
+          
+          // Remove hazard after hit
+          hazards.splice(i, 1);
+          continue;
+        }
+      }
+      
+      // Remove expired hazards
+      if (hazard.timer >= hazard.maxTimer) {
+        hazards.splice(i, 1);
+      }
+    }
+  }
+
+  function drawHazards() {
+    for (const hazard of hazards) {
+      const t = hazard.timer / hazard.warningTime;
+      const alpha = hazard.active ? 0.8 : Math.min(0.6, t);
+      const warningPulse = hazard.active ? 1 : (Math.sin(hazard.timer * 0.01) * 0.3 + 0.7);
+      
+      // Warning circle (before activation)
+      if (!hazard.active) {
+        ctx.beginPath();
+        ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 0, ${warningPulse * 0.8})`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 8]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      
+      // Hazard circle
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${hexToRgb(hazard.color)}, ${alpha * 0.5})`;
+      ctx.fill();
+      
+      if (hazard.active) {
+        ctx.strokeStyle = `rgba(${hexToRgb(hazard.color)}, ${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      
+      // Emoji
+      ctx.font = `${Math.floor(hazard.radius)}px Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fillText(hazard.emoji, hazard.x, hazard.y);
+    }
+  }
+
   function chooseRandomBiome() {
     let totalChance = BIOMES.reduce((sum, biome) => sum + biome.spawnChance, 0);
     let random = Math.random() * totalChance;
@@ -208,13 +341,16 @@
 
   function gameOver() {
     gameRunning = false;
-    alert(`Game Over! You survived in the ${currentBiome.name}.\nFinal Health: 0\nItems Collected: Food ${INVENTORY.food}, Water ${INVENTORY.water}, Wood ${INVENTORY.wood}`);
+    const survivalTime = Math.floor((performance.now() - health.lastUpdate) / 1000);
+    alert(`Game Over! You survived in the ${currentBiome.name}.\nSurvival Time: ${survivalTime}s\nFinal Health: 0\nItems Collected: Food ${INVENTORY.food}, Water ${INVENTORY.water}, Wood ${INVENTORY.wood}`);
     
-    // Reset and show start screen
+    // Reset game state
     health.current = health.max;
     INVENTORY.food = 0;
     INVENTORY.water = 0;
     INVENTORY.wood = 0;
+    hazards.length = 0;
+    hazardSpawnTimer = 0;
     updateInventoryUI();
     startScreenEl.classList.remove('hidden');
   }
@@ -465,13 +601,14 @@
         updateInventoryUI();
         burst(it.x, it.y, it.color);
         
-        // Health benefits from items
+        // Health benefits from items (affected by intelligence for efficiency)
+        const intelligenceBonus = player.character ? 1 + (player.character.intelligence - 60) * 0.01 : 1;
         if (it.type === 'food') {
-          health.current = Math.min(health.max, health.current + 15);
+          health.current = Math.min(health.max, health.current + Math.floor(15 * intelligenceBonus));
         } else if (it.type === 'water') {
-          health.current = Math.min(health.max, health.current + 10);
+          health.current = Math.min(health.max, health.current + Math.floor(10 * intelligenceBonus));
         } else if (it.type === 'wood') {
-          health.current = Math.min(health.max, health.current + 5);
+          health.current = Math.min(health.max, health.current + Math.floor(5 * intelligenceBonus));
         }
         updateHealthSystem(0);
         
@@ -681,6 +818,12 @@
     // Generate character
     player.character = generateRandomCharacter();
     
+    // Apply character stats to gameplay
+    const char = player.character;
+    player.speed = 200 + (char.agility - 60) * 5; // Agility affects movement speed
+    player.maxVel = 350 + (char.strength - 60) * 4; // Strength affects max velocity
+    health.max = 100 + (char.endurance - 60) * 2; // Endurance affects max health
+    
     // Choose spawn biome
     const spawnBiome = chooseRandomBiome();
     setCurrentBiome(spawnBiome);
@@ -701,6 +844,10 @@
     INVENTORY.water = 0;
     INVENTORY.wood = 0;
     updateInventoryUI();
+    
+    // Clear hazards
+    hazards.length = 0;
+    hazardSpawnTimer = 0;
     
     // Hide start screen
     startScreenEl.classList.add('hidden');
@@ -742,11 +889,13 @@
     tryCollect();
     updateParticles(dt);
     updateHealthSystem(dt);
+    updateHazards(dt);
 
     // Draw
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
     drawItems(now);
+    drawHazards();
     drawParticles();
     drawIndicators(dt);
     drawPlayer();
