@@ -15,6 +15,9 @@
   const countWaterEl = document.getElementById('count-water');
   const countWoodEl = document.getElementById('count-wood');
   const fpsEl = document.getElementById('fps');
+  const startScreenEl = document.getElementById('start-screen');
+  const startBtnEl = document.getElementById('start-btn');
+  const characterStatsEl = document.getElementById('character-stats');
 
   // Utility helpers
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -24,6 +27,98 @@
     return dx * dx + dy * dy;
   };
   const length = (x, y) => Math.hypot(x, y);
+
+  // Character generation system
+  const CHARACTER_TRAITS = {
+    skinTones: [
+      { name: 'Light', color: '#fdbcb4', hex: '#fdbcb4' },
+      { name: 'Medium', color: '#edb98a', hex: '#edb98a' },
+      { name: 'Tan', color: '#d08b5b', hex: '#d08b5b' },
+      { name: 'Dark', color: '#8d5524', hex: '#8d5524' },
+      { name: 'Deep', color: '#5d4037', hex: '#5d4037' }
+    ],
+    hairColors: [
+      { name: 'Blonde', color: '#faf0be', hex: '#faf0be' },
+      { name: 'Brown', color: '#8b4513', hex: '#8b4513' },
+      { name: 'Black', color: '#2f2f2f', hex: '#2f2f2f' },
+      { name: 'Red', color: '#cc4125', hex: '#cc4125' },
+      { name: 'Auburn', color: '#a52a2a', hex: '#a52a2a' },
+      { name: 'Gray', color: '#808080', hex: '#808080' }
+    ],
+    builds: [
+      { name: 'Slim', multiplier: 0.8 },
+      { name: 'Average', multiplier: 1.0 },
+      { name: 'Stocky', multiplier: 1.2 },
+      { name: 'Athletic', multiplier: 0.9 },
+      { name: 'Heavy', multiplier: 1.3 }
+    ],
+    heights: [
+      { name: 'Short', multiplier: 0.7 },
+      { name: 'Average', multiplier: 1.0 },
+      { name: 'Tall', multiplier: 1.3 },
+      { name: 'Very Tall', multiplier: 1.5 }
+    ]
+  };
+
+  function generateRandomCharacter() {
+    const skinTone = CHARACTER_TRAITS.skinTones[Math.floor(Math.random() * CHARACTER_TRAITS.skinTones.length)];
+    const hairColor = CHARACTER_TRAITS.hairColors[Math.floor(Math.random() * CHARACTER_TRAITS.hairColors.length)];
+    const build = CHARACTER_TRAITS.builds[Math.floor(Math.random() * CHARACTER_TRAITS.builds.length)];
+    const height = CHARACTER_TRAITS.heights[Math.floor(Math.random() * CHARACTER_TRAITS.heights.length)];
+    
+    const strength = Math.floor(Math.random() * 20) + 60; // 60-79
+    const agility = Math.floor(Math.random() * 20) + 60; // 60-79
+    const endurance = Math.floor(Math.random() * 20) + 60; // 60-79
+    const intelligence = Math.floor(Math.random() * 20) + 60; // 60-79
+    
+    return {
+      skinTone,
+      hairColor,
+      build,
+      height,
+      strength,
+      agility,
+      endurance,
+      intelligence
+    };
+  }
+
+  function displayCharacterStats(character) {
+    characterStatsEl.innerHTML = `
+      <div class="character-stat">
+        <span class="character-stat-name">Skin:</span>
+        <span>${character.skinTone.name}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Hair:</span>
+        <span>${character.hairColor.name}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Build:</span>
+        <span>${character.build.name}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Height:</span>
+        <span>${character.height.name}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Strength:</span>
+        <span>${character.strength}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Agility:</span>
+        <span>${character.agility}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Endurance:</span>
+        <span>${character.endurance}</span>
+      </div>
+      <div class="character-stat">
+        <span class="character-stat-name">Intelligence:</span>
+        <span>${character.intelligence}</span>
+      </div>
+    `;
+  }
 
   // World bounds
   const world = {
@@ -43,6 +138,7 @@
     maxVel: 400,
     target: null, // {x,y}
     lastClickTime: 0,
+    character: null, // Will be set when game starts
   };
 
   // Target indicator pulses
@@ -306,28 +402,95 @@
   }
 
   function drawPlayer() {
+    if (!player.character) return; // Don't draw if no character generated yet
+    
+    const char = player.character;
+    const heightMult = char.height.multiplier;
+    const buildMult = char.build.multiplier;
+    
     // Shadow
     ctx.beginPath();
-    ctx.arc(player.x + 0, player.y + 3, player.r + 2, 0, Math.PI * 2);
+    ctx.ellipse(player.x, player.y + 8, player.r * buildMult, player.r * 0.4, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fill();
 
-    // Body
+    // Body (torso)
+    const bodyHeight = player.r * 1.2 * heightMult;
+    const bodyWidth = player.r * 0.8 * buildMult;
     ctx.beginPath();
-    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffd166';
+    ctx.ellipse(player.x, player.y + 2, bodyWidth, bodyHeight, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#4a4a4a'; // Shirt color
     ctx.fill();
 
-    // Directional "eye"
-    const vx = player.velX, vy = player.velY;
-    const v = length(vx, vy);
-    const ex = v > 1 ? vx / v : 1;
-    const ey = v > 1 ? vy / v : 0;
-    const eyeR = 4;
+    // Head
+    const headRadius = player.r * 0.6;
     ctx.beginPath();
-    ctx.arc(player.x + ex * 6, player.y + ey * 6, eyeR, 0, Math.PI * 2);
+    ctx.arc(player.x, player.y - bodyHeight + headRadius, headRadius, 0, Math.PI * 2);
+    ctx.fillStyle = char.skinTone.color;
+    ctx.fill();
+
+    // Hair
+    ctx.beginPath();
+    ctx.arc(player.x, player.y - bodyHeight + headRadius - 2, headRadius * 1.1, Math.PI, Math.PI * 2);
+    ctx.fillStyle = char.hairColor.color;
+    ctx.fill();
+
+    // Eyes
+    const eyeY = player.y - bodyHeight + headRadius - 2;
+    ctx.beginPath();
+    ctx.arc(player.x - 3, eyeY, 2, 0, Math.PI * 2);
     ctx.fillStyle = '#2d2f3f';
     ctx.fill();
+    ctx.beginPath();
+    ctx.arc(player.x + 3, eyeY, 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#2d2f3f';
+    ctx.fill();
+
+    // Arms
+    const armLength = player.r * 0.8;
+    const armY = player.y - bodyHeight * 0.2;
+    ctx.beginPath();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = char.skinTone.color;
+    ctx.moveTo(player.x - bodyWidth, armY);
+    ctx.lineTo(player.x - bodyWidth - armLength * 0.5, armY + armLength * 0.3);
+    ctx.stroke();
+    ctx.moveTo(player.x + bodyWidth, armY);
+    ctx.lineTo(player.x + bodyWidth + armLength * 0.5, armY + armLength * 0.3);
+    ctx.stroke();
+
+    // Legs
+    const legLength = player.r * 1.0 * heightMult;
+    const legY = player.y + bodyHeight;
+    ctx.beginPath();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#2a2a2a'; // Pants color
+    ctx.moveTo(player.x - bodyWidth * 0.3, legY);
+    ctx.lineTo(player.x - bodyWidth * 0.2, legY + legLength);
+    ctx.stroke();
+    ctx.moveTo(player.x + bodyWidth * 0.3, legY);
+    ctx.lineTo(player.x + bodyWidth * 0.2, legY + legLength);
+    ctx.stroke();
+
+    // Direction indicator (small arrow above head)
+    if (player.target) {
+      const vx = player.velX, vy = player.velY;
+      const v = length(vx, vy);
+      if (v > 1) {
+        const ex = vx / v;
+        const ey = vy / v;
+        const arrowY = player.y - bodyHeight - headRadius - 8;
+        const arrowSize = 5;
+        
+        ctx.beginPath();
+        ctx.fillStyle = '#6c7cff';
+        ctx.moveTo(player.x + ex * arrowSize, arrowY + ey * arrowSize);
+        ctx.lineTo(player.x - ex * arrowSize + ey * arrowSize * 0.5, arrowY - ey * arrowSize - ex * arrowSize * 0.5);
+        ctx.lineTo(player.x - ex * arrowSize - ey * arrowSize * 0.5, arrowY - ey * arrowSize + ex * arrowSize * 0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
 
     // Target line
     if (player.target) {
@@ -392,11 +555,46 @@
     return `${r}, ${g}, ${b}`;
   }
 
+  // Game state management
+  let gameStarted = false;
+  let gameRunning = false;
+
+  function startGame() {
+    // Generate character
+    player.character = generateRandomCharacter();
+    
+    // Reset player position
+    player.x = world.w() * 0.5;
+    player.y = world.h() * 0.5;
+    player.velX = 0;
+    player.velY = 0;
+    player.target = null;
+    
+    // Hide start screen
+    startScreenEl.classList.add('hidden');
+    
+    // Clear any existing items and respawn
+    items.length = 0;
+    for (let i = 0; i < 12; i++) spawnItem();
+    
+    // Start game
+    gameStarted = true;
+    gameRunning = true;
+    
+    // Start main loop if not already running
+    if (!lastTime) {
+      lastTime = performance.now();
+      requestAnimationFrame(frame);
+    }
+  }
+
   // Main loop
-  let lastTime = performance.now();
+  let lastTime = 0;
   let fpsAccum = 0, fpsFrames = 0, fpsValue = 0;
 
   function frame(now) {
+    if (!gameRunning) return;
+    
     const dt = Math.min(0.033, (now - lastTime) / 1000); // clamp to 30 FPS delta
     lastTime = now;
 
@@ -431,8 +629,14 @@
     requestAnimationFrame(frame);
   }
 
-  // Seed a few items to start
-  for (let i = 0; i < 12; i++) spawnItem();
+  // Initialize start screen
+  function initStartScreen() {
+    const previewCharacter = generateRandomCharacter();
+    displayCharacterStats(previewCharacter);
+    
+    startBtnEl.addEventListener('click', startGame);
+  }
 
-  requestAnimationFrame(frame);
+  // Initialize the game
+  initStartScreen();
 })();
